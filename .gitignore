@@ -7,3 +7,5 @@ firmware.bin
 openwrt-ramips-mt7620-Default-u-boot.bin
 openwrt-ramips-mt7620-tessel-squashfs-sysupgrade.bin
 /.container-home/
+output/
+.container-home/

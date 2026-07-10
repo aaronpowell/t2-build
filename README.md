@@ -2,28 +2,111 @@
 
 [![Code of Conduct](https://img.shields.io/badge/%E2%9D%A4-code%20of%20conduct-blue.svg?style=flat)](https://github.com/tessel/project/blob/master/CONDUCT.md)
 
-Legacy Ansible and Vagrant scripts for building t2.
+Build tooling for the Tessel 2 OpenWrt image. Works on **Windows, Linux, and macOS** via Docker.
 
-## Preferred OpenWrt build environment for the revival effort
+---
 
-The original Vagrant flow targeted Ubuntu 14.04. That still reflects the era of the toolchain, but on a modern 2026 host the most practical option is to keep the host modern and run the OpenWrt build inside an older container userspace.
+## Quick start (Windows, Linux, or macOS)
 
-`openwrt-env.sh` builds and runs an Ubuntu 18.04 image that keeps the old host-tool expectations together:
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) or Docker Engine (Linux).
 
-- `scons` still has Python 2 available as `/usr/bin/python`
-- the bundled OpenWrt `cmake-2.8.12.2` sees an older libstdc++/glibc combination
-- `mkimage` builds against a pre-OpenSSL-3 userspace
+```powershell
+# PowerShell (Windows) or bash (Linux/macOS/WSL)
+git clone https://github.com/aaronpowell/t2-build.git
+cd t2-build
+docker compose run --rm build
+```
 
-This avoids having to patch every historical host utility just to survive on Ubuntu 24.04+.
+That's it. On first run the container:
+1. Clones the forked `openwrt` and `openwrt-tessel` repos into a Docker-managed Linux volume
+2. Builds the fragile legacy host tools (scons, cmake, mkimage) against Ubuntu 18.04 userspace
+3. Runs the full OpenWrt world build
+4. Copies the output `.bin` files to `./output/` where your host OS can read them
 
-### Requirements
+Subsequent runs skip cloning and reuse the build cache — much faster.
 
-- Docker or Podman
-- a workspace layout where `openwrt-tessel/` and `openwrt/` are both present under the same parent directory (the current revival workspace already looks like this)
+**Output files in `./output/`:**
+```
+openwrt-ramips-mt7620-tessel-squashfs-sysupgrade.bin   (~4.3 MB, flash this to the board)
+openwrt-ramips-mt7620-uImage.bin
+```
 
-### Quick start
+---
 
-From this repository:
+## Why Docker?
+
+The Tessel 2 OpenWrt image is built from a ~2014-era toolchain that collides with modern hosts:
+- requires Python 2
+- old CMake sources break against modern libstdc++
+- mkimage requires pre-OpenSSL-3 APIs
+
+Rather than patching every host tool, the build runs inside Ubuntu 18.04 which has the right environment natively. The source tree lives in a **Docker named volume** (a Linux filesystem), which also avoids Windows NTFS limitations (colon characters in filenames, case sensitivity).
+
+---
+
+## Docker Compose commands
+
+```powershell
+# Full build (clone + host-tools + world) — recommended
+docker compose run --rm build
+
+# Open a shell inside the build container (for debugging)
+docker compose run --rm shell
+
+# Step-by-step (advanced)
+docker compose run --rm build clone       # clone sources only
+docker compose run --rm build host-tools  # build legacy host tools only
+docker compose run --rm build world       # run make world + copy artifacts
+```
+
+---
+
+## Using your own forks
+
+Set environment variables to point at different upstream repos:
+
+```powershell
+# PowerShell
+$env:OPENWRT_FORK="https://github.com/yourusername/openwrt.git"
+$env:OPENWRT_BRANCH="2018-07-13"
+$env:OPENWRT_TESSEL_FORK="https://github.com/yourusername/openwrt-tessel.git"
+docker compose run --rm build
+```
+
+```bash
+# bash
+OPENWRT_FORK=https://github.com/yourusername/openwrt.git \
+OPENWRT_TESSEL_FORK=https://github.com/yourusername/openwrt-tessel.git \
+docker compose run --rm build
+```
+
+---
+
+## Resetting the build cache
+
+The source tree and build artifacts live in a Docker named volume (`t2-build_openwrt-src`). To start fresh:
+
+```powershell
+docker compose down -v   # removes the volume
+docker compose run --rm build
+```
+
+---
+
+## Controlling parallelism
+
+```powershell
+$env:BUILD_JOBS=4
+docker compose run --rm build
+```
+
+Defaults to all available CPU cores.
+
+---
+
+## Linux/WSL direct build (alternative)
+
+If you prefer to run the build directly in Linux without Docker Compose, `openwrt-env.sh` is still available:
 
 ```bash
 ./openwrt-env.sh build-image
@@ -31,35 +114,13 @@ From this repository:
 ./openwrt-env.sh world
 ```
 
-Useful commands:
+This variant mounts the sibling workspace (expects `openwrt/` and `openwrt-tessel/` next to `t2-build/`).
 
-```bash
-./openwrt-env.sh shell
-./openwrt-env.sh fix-perms
-./openwrt-env.sh exec 'make -j"$(nproc)" download'
-```
+---
 
-`host-tools` is the fast smoke test for the historically fragile bits (`scons`, old `cmake`, and `mkimage`).
+## Why Ubuntu 18.04?
 
-`world` runs the traditional retry pattern:
-
-```bash
-make -j"$(nproc)" || make -j"$(nproc)" || make -j1 V=s
-```
-
-The script mounts the whole sibling workspace into the container so the `openwrt-tessel/openwrt -> ../openwrt` link works unchanged.
-
-If earlier experiments left root-owned files in `openwrt/tmp`, `build_dir`, or `staging_dir`, run `./openwrt-env.sh fix-perms` once before rebuilding.
-
-### Why Ubuntu 18.04 instead of patching the host?
-
-On current hosts we already know the legacy OpenWrt tree collides with:
-
-- Python 2 removal
-- old CMake sources vs modern libstdc++
-- old U-Boot host tools vs OpenSSL 3 APIs
-
-Ubuntu 16.04 got further in local experiments, which confirmed that an older userspace is the right strategy. In practice, Ubuntu 18.04 is the oldest base image that still bootstraps cleanly from today's public package mirrors, while still preserving Python 2 and avoiding the OpenSSL 3 / newest-libstdc++ breakage from Ubuntu 24.04.
+Ubuntu 18.04 is the oldest base image that still bootstraps cleanly from today's package mirrors while preserving Python 2 and avoiding the OpenSSL 3 / libstdc++ breakage introduced in Ubuntu 22.04+. Ubuntu 16.04 was tried and got further than 24.04 in early experiments, which confirmed the older-userspace strategy is correct.
 
 ## Historical Vagrant flow
 

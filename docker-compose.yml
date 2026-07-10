@@ -1,0 +1,55 @@
+# docker-compose.yml — Windows-friendly OpenWrt build for Tessel 2
+#
+# Requirements: Docker Desktop (Windows) with WSL2 backend, or Docker on Linux/WSL.
+#
+# Quick start (PowerShell or bash):
+#   docker compose run --rm build
+#
+# The first run clones source repos into a Docker-managed Linux volume
+# (no NTFS colon/case-sensitivity issues). Artifacts land in ./output/.
+#
+# See README.md for full usage.
+
+services:
+  build:
+    build:
+      context: docker/openwrt-bionic
+      dockerfile: Dockerfile
+    image: tessel-openwrt-bionic
+    volumes:
+      # Named Linux volume — source tree and build cache live here.
+      # This avoids Windows NTFS limitations (colons, case sensitivity).
+      - openwrt-src:/work
+      # Bind mount — artifacts are written here so Windows can read them.
+      - ./output:/artifacts
+    environment:
+      # Override these to point at your own forks if needed.
+      - OPENWRT_FORK=${OPENWRT_FORK:-https://github.com/aaronpowell/openwrt.git}
+      - OPENWRT_BRANCH=${OPENWRT_BRANCH:-2018-07-13}
+      - OPENWRT_TESSEL_FORK=${OPENWRT_TESSEL_FORK:-https://github.com/aaronpowell/openwrt-tessel.git}
+      # Number of parallel make jobs. Default: all available cores.
+      - BUILD_JOBS=${BUILD_JOBS:-}
+    # Remove the container after the build completes.
+    # The named volume persists so incremental rebuilds are fast.
+
+  # Convenience: open a shell inside the build environment.
+  shell:
+    build:
+      context: docker/openwrt-bionic
+      dockerfile: Dockerfile
+    image: tessel-openwrt-bionic
+    volumes:
+      - openwrt-src:/work
+      - ./output:/artifacts
+    environment:
+      - OPENWRT_FORK=${OPENWRT_FORK:-https://github.com/aaronpowell/openwrt.git}
+      - OPENWRT_BRANCH=${OPENWRT_BRANCH:-2018-07-13}
+      - OPENWRT_TESSEL_FORK=${OPENWRT_TESSEL_FORK:-https://github.com/aaronpowell/openwrt-tessel.git}
+    stdin_open: true
+    tty: true
+    command: ["shell"]
+
+volumes:
+  # Docker-managed volume for the OpenWrt source + build tree.
+  # Lives entirely inside Docker's Linux VM — no Windows filesystem involved.
+  openwrt-src:

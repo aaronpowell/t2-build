@@ -35,6 +35,10 @@ RUN apt-get update \
  && locale-gen en_US.UTF-8 \
  && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /work/openwrt-tessel
+WORKDIR /work
 
-CMD ["bash"]
+COPY build-entrypoint.sh /usr/local/bin/build-entrypoint.sh
+RUN chmod +x /usr/local/bin/build-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/build-entrypoint.sh"]
+CMD ["build"]
